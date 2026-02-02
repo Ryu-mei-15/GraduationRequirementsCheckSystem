@@ -1,13 +1,16 @@
 import streamlit as st
 from dataclasses import dataclass
 from typing import List
+import json
+import os
 
 # ---------------------------------------------------------
 # 1. コンフィグレーション
 # ---------------------------------------------------------
 GRADUATION_REQ = 128      # 卒業要件総単位数
-COMMON_REQ = 44           # 共通教育 必要単位数
+COMMON_REQ = 26           # 共通教育 必要単位数
 SPECIALIZED_REQ = 78      # 専門教育 必要単位数
+DATA_FILE = "graduation_data.json" # 保存用ファイル名
 
 # ---------------------------------------------------------
 # 2. データ構造
@@ -16,23 +19,15 @@ SPECIALIZED_REQ = 78      # 専門教育 必要単位数
 class Subject:
     name: str
     credits: int
-    category: str  
-    # category定義:
-    # common_lang, common_human, common_social, common_natural, common_health, common_univ
-    # pbl, basic_comp, basic_math_star, basic_other
-    # ds_prac, ds_found, ds_theory
-    # ict_prac, ict_found, ict_theory
-    # human_prac, human_found, human_theory
-    # other_exchange, other_dept
+    category: str
     required: bool = False # ●印 (必修)
     is_star: bool = False  # ★印 (数学選択)
 
 # ---------------------------------------------------------
-# 3. 全科目データ (画像1〜4の完全統合)
+# 3. 全科目データ
 # ---------------------------------------------------------
 SUBJECT_DATA = [
-    # === 【共通教育科目】 (画像1, 2) ===
-    # 外国語 (要6単位)
+    # === 【共通教育科目】 ===
     Subject("English I", 1, "common_lang", required=True),
     Subject("English II", 1, "common_lang", required=True),
     Subject("English III", 1, "common_lang"),
@@ -46,7 +41,6 @@ SUBJECT_DATA = [
     Subject("海外語学研修 I", 2, "common_lang"),
     Subject("海外語学研修 II", 2, "common_lang"),
 
-    # 人文系 (要4単位)
     Subject("歴史学", 2, "common_human"),
     Subject("教育学", 2, "common_human"),
     Subject("哲学", 2, "common_human"),
@@ -54,7 +48,6 @@ SUBJECT_DATA = [
     Subject("論理学", 2, "common_human"),
     Subject("心理学", 2, "common_human"),
 
-    # 社会系 (要4単位)
     Subject("日本国憲法", 2, "common_social"),
     Subject("法学概論", 2, "common_social"),
     Subject("人権論", 2, "common_social"),
@@ -63,7 +56,6 @@ SUBJECT_DATA = [
     Subject("民法", 2, "common_social"),
     Subject("知的財産概論", 2, "common_social"),
 
-    # 自然系 (要4単位)
     Subject("数学基礎", 2, "common_natural"),
     Subject("幾何学入門", 2, "common_natural"),
     Subject("生物学概論", 2, "common_natural"),
@@ -72,13 +64,11 @@ SUBJECT_DATA = [
     Subject("物理学概論", 2, "common_natural"),
     Subject("地球科学概論", 2, "common_natural"),
 
-    # 保健体育
     Subject("体育実技 I", 1, "common_health"),
     Subject("体育実技 II", 1, "common_health"),
     Subject("栄養学", 2, "common_health"),
     Subject("健康学", 2, "common_health"),
 
-    # 全学共通
     Subject("データサイエンス入門", 2, "common_univ"),
     Subject("統計学", 2, "common_univ"),
     Subject("多文化共生論", 2, "common_univ"),
@@ -95,8 +85,7 @@ SUBJECT_DATA = [
     Subject("経営情報システム論", 2, "common_univ"),
     Subject("観光情報学", 2, "common_univ"),
 
-    # === 【専門教育科目】 (画像3) ===
-    # PBL
+    # === 【専門教育科目】 ===
     Subject("地域情報PBL I", 1, "pbl"),
     Subject("地域情報PBL II", 1, "pbl"),
     Subject("地域情報PBL III", 1, "pbl"),
@@ -108,18 +97,16 @@ SUBJECT_DATA = [
     Subject("インターンシップ実習 I", 1, "pbl"),
     Subject("インターンシップ実習 II", 1, "pbl"),
 
-    # 情報専門基礎
     Subject("コンピュータプログラミング I", 2, "basic_comp", required=True),
     Subject("コンピュータプログラミング II", 2, "basic_comp", required=True),
     Subject("情報学アカデミックスキル", 2, "basic_comp", required=True),
     Subject("計算機アーキテクチャ", 2, "basic_other"),
     Subject("コンピュータプログラミング演習 I", 1, "basic_comp", required=True),
     Subject("コンピュータプログラミング演習 II", 1, "basic_comp", required=True),
-    Subject("IT実習A", 2, "basic_other"),
-    Subject("IT実習B", 2, "basic_other"),
+    Subject("IT実習A", 2, "basic_other", required=True),
+    Subject("IT実習B", 2, "basic_other", required=True),
     Subject("アルゴリズム論", 2, "basic_other"),
     
-    # ★数学科目
     Subject("微分積分 I", 2, "basic_math_star", is_star=True),
     Subject("微分積分 II", 2, "basic_math_star", is_star=True),
     Subject("線形代数 I", 2, "basic_math_star", is_star=True),
@@ -127,7 +114,7 @@ SUBJECT_DATA = [
     Subject("数学演習 I", 1, "basic_math_star", is_star=True),
     Subject("数学演習 II", 1, "basic_math_star", is_star=True),
 
-    # トラック1: データサイエンス系 (DS)
+    # トラック1: データサイエンス
     Subject("データ可視化", 2, "ds_prac"),
     Subject("計測工学", 2, "ds_prac"),
     Subject("基礎データ解析", 2, "ds_prac"),
@@ -137,11 +124,11 @@ SUBJECT_DATA = [
     Subject("画像情報処理", 2, "ds_found"),
     Subject("応用画像処理", 2, "ds_found"),
     Subject("微分方程式・フーリエ解析", 2, "ds_theory"),
-    Subject("離散数学", 2, "ds_theory"), # ここでは理論系に配置(画像準拠)
+    Subject("離散数学", 2, "ds_theory"),
     Subject("機械学習", 2, "ds_theory"),
     Subject("制御工学", 2, "ds_theory"),
 
-    # トラック2: ICTトラック (ICT)
+    # トラック2: ICT
     Subject("情報ネットワーク", 2, "ict_prac"),
     Subject("地理情報システム", 2, "ict_prac"),
     Subject("情報セキュリティ", 2, "ict_prac"),
@@ -155,7 +142,7 @@ SUBJECT_DATA = [
     Subject("計算理論", 2, "ict_theory"),
     Subject("数値解析", 2, "ict_theory"),
 
-    # トラック3: 人間・社会情報学トラック (Human)
+    # トラック3: 人間・社会情報
     Subject("エンタテインメント情報学", 2, "human_prac"),
     Subject("メディア情報学", 2, "human_prac"),
     Subject("サービスエンジニアリング", 2, "human_prac"),
@@ -169,8 +156,7 @@ SUBJECT_DATA = [
     Subject("パターン認識", 2, "human_theory"),
     Subject("自然言語処理", 2, "human_theory"),
 
-    # === 【その他科目】 (画像4) ===
-    # 単位互換科目
+    # その他
     Subject("単位互換科目 I", 1, "other_exchange"),
     Subject("単位互換科目 II", 2, "other_exchange"),
     Subject("単位互換科目 III", 2, "other_exchange"),
@@ -178,7 +164,6 @@ SUBJECT_DATA = [
     Subject("単位互換科目 V", 2, "other_exchange"),
     Subject("単位互換科目 VI", 4, "other_exchange"),
     
-    # 他学部・他学科
     Subject("地域協働論", 2, "other_dept"),
     Subject("教育行政論", 2, "other_dept"),
     Subject("国際フィールドワーク", 2, "other_dept"),
@@ -187,22 +172,65 @@ SUBJECT_DATA = [
 ]
 
 # ---------------------------------------------------------
-# 4. アプリケーションロジック
+# 4. 保存・読み込みロジック
+# ---------------------------------------------------------
+def load_data():
+    """JSONファイルから履修済み科目名のリストを読み込む"""
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_data(checked_names):
+    """履修済み科目名のリストをJSONファイルに保存する"""
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(checked_names, f, ensure_ascii=False, indent=4)
+        st.toast(f"✅ 保存しました！ ({len(checked_names)}科目)", icon="💾")
+    except Exception as e:
+        st.error(f"保存に失敗しました: {e}")
+
+# ---------------------------------------------------------
+# 5. アプリケーションロジック
 # ---------------------------------------------------------
 def main():
     st.set_page_config(page_title="卒業要件チェックシート", layout="wide")
-    st.title("🎓 福知山公立大学情報学部情報学科 卒業要件判定システム（2024～2025年度入学カリキュラム）")
-    st.markdown("履修科目にチェックを入れてください．自動的に要件充足状況を計算します．")
+    
+    # --- 初期化処理 ---
+    # セッションステートにデータが未ロードならファイルから読み込む
+    if "loaded_checked_items" not in st.session_state:
+        st.session_state["loaded_checked_items"] = load_data()
+        # 読み込んだデータに基づいて，各チェックボックスの初期状態(True/False)を設定
+        for subj in SUBJECT_DATA:
+            if subj.name in st.session_state["loaded_checked_items"]:
+                st.session_state[subj.name] = True
+    
+    st.title("🎓 情報学科 卒業要件判定システム")
+    st.markdown("履修科目にチェックを入れてください．サイドバーの「保存」ボタンで記録を残せます．")
 
-    selected_subjects = []
-
-    # タブ設定 (その他を追加)
+    # タブ設定
     tab1, tab2, tab3, tab4 = st.tabs([
         "① 共通教育科目", 
         "② 専門基礎・PBL", 
         "③ 専門トラック",
         "④ その他・他学部"
     ])
+
+    # ヘルパー関数: チェックボックスを描画し，リストに追加
+    # keyを科目名にすることで session_state と自動連動させる
+    selected_subjects = []
+    
+    def create_checkbox(subject_obj, label=None):
+        if label is None:
+            label = subject_obj.name
+        
+        # チェックボックスの状態は st.session_state[subject_obj.name] で管理される
+        is_checked = st.checkbox(f"{label} ({subject_obj.credits})", key=subject_obj.name)
+        if is_checked:
+            selected_subjects.append(subject_obj)
 
     # -----------------------
     # ① 共通教育科目
@@ -216,7 +244,7 @@ def main():
         for i, s in enumerate([x for x in SUBJECT_DATA if x.category == "common_lang"]):
             with cols[i % 4]:
                 label = f"●{s.name}" if s.required else s.name
-                if st.checkbox(f"{label} ({s.credits})", key=s.name): selected_subjects.append(s)
+                create_checkbox(s, label)
 
         st.divider()
         
@@ -225,22 +253,22 @@ def main():
         with c1:
             st.markdown("##### 📚 人文系 (要4単位)")
             for s in [x for x in SUBJECT_DATA if x.category == "common_human"]:
-                if st.checkbox(f"{s.name}", key=s.name): selected_subjects.append(s)
+                create_checkbox(s)
         with c2:
             st.markdown("##### ⚖️ 社会系 (要4単位)")
             for s in [x for x in SUBJECT_DATA if x.category == "common_social"]:
-                if st.checkbox(f"{s.name}", key=s.name): selected_subjects.append(s)
+                create_checkbox(s)
         with c3:
             st.markdown("##### 🧪 自然系 (要4単位)")
             for s in [x for x in SUBJECT_DATA if x.category == "common_natural"]:
-                if st.checkbox(f"{s.name}", key=s.name): selected_subjects.append(s)
+                create_checkbox(s)
 
         st.divider()
         st.markdown("##### 🏃 保健体育・全学共通")
         cols = st.columns(4)
         for i, s in enumerate([x for x in SUBJECT_DATA if x.category in ["common_health", "common_univ"]]):
             with cols[i % 4]:
-                if st.checkbox(f"{s.name} ({s.credits})", key=s.name): selected_subjects.append(s)
+                create_checkbox(s)
 
     # -----------------------
     # ② 専門基礎・PBL
@@ -252,20 +280,20 @@ def main():
             st.subheader("PBL科目")
             for s in [x for x in SUBJECT_DATA if x.category == "pbl"]:
                 label = f"●{s.name}" if s.required else s.name
-                if st.checkbox(f"{label} ({s.credits})", key=s.name): selected_subjects.append(s)
+                create_checkbox(s, label)
         
         with c_basic:
             st.subheader("情報専門基礎")
-            st.markdown("**【必】=必修, 【★】=数学選択(4単位以上)**")
+            st.markdown("**【●】=必修, 【★】=数学選択(4単位以上)**")
             
             st.markdown("###### プログラミング・その他")
             for s in [x for x in SUBJECT_DATA if x.category in ["basic_comp", "basic_other"]]:
                 label = f"●{s.name}" if s.required else s.name
-                if st.checkbox(f"{label} ({s.credits})", key=s.name): selected_subjects.append(s)
+                create_checkbox(s, label)
             
             st.markdown("###### ★数学科目 (要4単位)")
             for s in [x for x in SUBJECT_DATA if x.category == "basic_math_star"]:
-                if st.checkbox(f"★{s.name} ({s.credits})", key=s.name): selected_subjects.append(s)
+                create_checkbox(s, f"★{s.name}")
 
     # -----------------------
     # ③ 専門トラック
@@ -279,13 +307,13 @@ def main():
                 st.markdown(f"### {title}")
                 st.markdown("#### 実践系")
                 for s in [x for x in SUBJECT_DATA if x.category == f"{prefix}_prac"]:
-                    if st.checkbox(f"{s.name}", key=s.name): selected_subjects.append(s)
+                    create_checkbox(s)
                 st.markdown("#### 基盤系")
                 for s in [x for x in SUBJECT_DATA if x.category == f"{prefix}_found"]:
-                    if st.checkbox(f"{s.name}", key=s.name): selected_subjects.append(s)
+                    create_checkbox(s)
                 st.markdown("#### 理論系")
                 for s in [x for x in SUBJECT_DATA if x.category == f"{prefix}_theory"]:
-                    if st.checkbox(f"{s.name}", key=s.name): selected_subjects.append(s)
+                    create_checkbox(s)
 
         render_track(col_ds, "📈 データサイエンス", "ds")
         render_track(col_ict, "💻 ICT", "ict")
@@ -301,16 +329,15 @@ def main():
         with col_ex:
             st.markdown("##### 単位互換科目")
             for s in [x for x in SUBJECT_DATA if x.category == "other_exchange"]:
-                if st.checkbox(f"{s.name} ({s.credits})", key=s.name): selected_subjects.append(s)
+                create_checkbox(s)
         with col_dep:
             st.markdown("##### 他学部・他学科科目")
             for s in [x for x in SUBJECT_DATA if x.category == "other_dept"]:
-                if st.checkbox(f"{s.name} ({s.credits})", key=s.name): selected_subjects.append(s)
+                create_checkbox(s)
 
     # ---------------------------------------------------------
-    # 集計ロジック
+    # 集計ロジック (変更なし)
     # ---------------------------------------------------------
-    # 1. カテゴリ別合計
     total_credits = sum(s.credits for s in selected_subjects)
     
     def calc_sum(cat_prefix):
@@ -319,17 +346,14 @@ def main():
     common_credits = calc_sum("common")
     specialized_total = sum(s.credits for s in selected_subjects if not s.category.startswith("common") and not s.category.startswith("other"))
     
-    # 共通教育 詳細要件
     c_lang = sum(s.credits for s in selected_subjects if s.category == "common_lang")
     c_human = sum(s.credits for s in selected_subjects if s.category == "common_human")
     c_social = sum(s.credits for s in selected_subjects if s.category == "common_social")
     c_natural = sum(s.credits for s in selected_subjects if s.category == "common_natural")
 
-    # 専門基礎 数学★要件
     math_star_credits = sum(s.credits for s in selected_subjects if s.category == "basic_math_star")
     is_math_cleared = math_star_credits >= 4
 
-    # トラック要件 (実践>=4 and 基盤>=4 and 理論>=4)
     def check_track_cleared(prefix):
         prac = sum(s.credits for s in selected_subjects if s.category == f"{prefix}_prac")
         found = sum(s.credits for s in selected_subjects if s.category == f"{prefix}_found")
@@ -342,12 +366,10 @@ def main():
     human_ok, human_p, human_f, human_t = check_track_cleared("human")
     any_track_cleared = ds_ok or ict_ok or human_ok
     
-    # 表示用トラック選択
     if ds_ok: display_track, d_p, d_f, d_t = "データサイエンス", ds_p, ds_f, ds_t
     elif ict_ok: display_track, d_p, d_f, d_t = "ICT", ict_p, ict_f, ict_t
     elif human_ok: display_track, d_p, d_f, d_t = "人間・社会情報", human_p, human_f, human_t
     else:
-        # 未達成時は合計が多いものを仮表示
         sums = {
             "データサイエンス": ds_p+ds_f+ds_t,
             "ICT": ict_p+ict_f+ict_t,
@@ -361,16 +383,24 @@ def main():
     missing_required = [s.name for s in SUBJECT_DATA if s.required and s not in selected_subjects]
 
     # ---------------------------------------------------------
-    # サイドバー レポート
+    # サイドバー: 保存機能とレポート
     # ---------------------------------------------------------
-    st.sidebar.title("📊 判定結果")
+    st.sidebar.title("卒業要件チェッカー")
     
-    # 総単位
+    # --- 保存ボタン ---
+    st.sidebar.markdown("### 💾 データ保存")
+    if st.sidebar.button("現状を保存する", type="primary"):
+        # 選択されている科目の名前リストを作成して保存
+        current_checked = [s.name for s in selected_subjects]
+        save_data(current_checked)
+
+    # --- レポート ---
+    st.sidebar.markdown("---")
+    st.sidebar.header("📊 判定結果")
     st.sidebar.metric("総取得単位", f"{total_credits} / {GRADUATION_REQ}", delta=total_credits - GRADUATION_REQ)
     if total_credits >= GRADUATION_REQ:
         st.sidebar.success("総単位数クリア！")
     
-    # 共通教育
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"**① 共通教育 ({common_credits}/{COMMON_REQ})**")
     def status_icon(cond): return "✅" if cond else "⚠️"
@@ -379,12 +409,10 @@ def main():
     st.sidebar.write(f"{status_icon(c_social >= 4)} 社会系: {c_social}/4")
     st.sidebar.write(f"{status_icon(c_natural >= 4)} 自然系: {c_natural}/4")
 
-    # 専門教育
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"**② 専門教育 ({specialized_total}/{SPECIALIZED_REQ})**")
     st.sidebar.write(f"{status_icon(is_math_cleared)} 数学★選択: {math_star_credits}/4")
 
-    # トラック詳細
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"**③ トラック判定**\n(基準: {display_track})")
     st.sidebar.write(f"{status_icon(d_p >= 4)} 実践系: {d_p}/4")
@@ -392,7 +420,6 @@ def main():
     st.sidebar.write(f"{status_icon(d_t >= 4)} 理論系: {d_t}/4")
     if any_track_cleared: st.sidebar.success("トラック要件クリア")
 
-    # 総合判定
     st.sidebar.markdown("---")
     is_grad_ready = (total_credits >= GRADUATION_REQ) and \
                     (common_credits >= COMMON_REQ) and \
