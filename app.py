@@ -8,7 +8,7 @@ import os
 # 1. コンフィグレーション
 # ---------------------------------------------------------
 GRADUATION_REQ = 128      # 卒業要件総単位数
-COMMON_REQ = 26           # 共通教育 必要単位数
+COMMON_REQ = 44           # 共通教育 必要単位数
 SPECIALIZED_REQ = 78      # 専門教育 必要単位数
 DATA_FILE = "graduation_data.json" # 保存用ファイル名
 
@@ -324,7 +324,7 @@ def main():
     # -----------------------
     with tab4:
         st.subheader("その他科目")
-        st.write("これらは主に総単位数(128)に含まれます．")
+        st.write("この科目を含む全科目の中から6単位必要．")
         col_ex, col_dep = st.columns(2)
         with col_ex:
             st.markdown("##### 単位互換科目")
